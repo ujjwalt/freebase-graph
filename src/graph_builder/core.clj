@@ -6,40 +6,43 @@
 (def seeds ["m.01zh29"])
 (def freebase-ns "http://rdf.freebase.com/ns")
 
-(defn full-url
-  [id]
-  (str freebase-ns id))
-
 (defn get-lines
   "Fetches the rdf file for a machine id on freebase and returns a vector of lines"
   [id]
   (->> id
-       full-url
+       (str freebase-ns)
        http/get
        :body
        clojure.string/split-lines
        (map clojure.string/trim)
-       (map clojure.string/blank?)))
+       (filter #(not (clojure.string/blank? %)))
+       vec))
 
 (def prefix-re #"@prefix (.*): <(.*)>\.")
 
-(defn prefixes-and-triples
-  "Split lines into prefixes and non prefix directives"
-  [lines]
-  (let [[prefixes triples] (split-with #(.startsWith % "@prefix") lines)
-        p {}]
-    [(map)]))
+(defn filter-triples
+  [id prefix-hash ntriples]
+  (map (fn
+         [line]
+         (= (freebase-ns prefix-hash) (second (re-find #"^(.*):.*" (first line))))
+         )
+   (drop-while #(= id %) ntriples)))
 
-(defn )
+(defn full-id
+  [id]
+  (str "/" (clojure.string/replace id "." "/")))
 
 (defn get-freebase
   "Fetches a vector of vectors for the given machine id. Each element is a vector consisting of the subject, predicate and object"
   [id]
-  (let [id (str "/" (clojure.string/replace) id "." "/")
-        lines (get-lines id)
-        [prefixes ns-triples] (prefixes-and-triples lines)
-        triples (remove-prefixes prefixes ns-triples)]
-    (build-triples id triples)))
+  (let [actual-id (full-id id)
+        lines (get-lines actual-id)
+        [prefixes ntriples] (split-with #(.startsWith % "@prefix") lines)
+        prefix-hash (reduce (fn
+                           [hash line]
+                           (let [[_ val key] (re-find prefix-re line)]
+                             (assoc hash key val))) {} prefixes)]
+    (filter-triples id prefix-hash ntriples)))
 
 (defn -main
   "I don't do a whole lot ... yet."
